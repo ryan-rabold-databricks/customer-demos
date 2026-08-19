@@ -1,0 +1,37 @@
+bundle:
+  name: domain-tag-propagation
+
+include:
+  - resources/*.yml
+
+# Parameters are surfaced as bundle variables so they can be overridden per target (or at run time with `--var`). They flow into the notebook task's base_parameters, which the notebook reads as widgets.
+variables:
+  catalog_name:
+    description: Catalog to scan and tag. Required at run time.
+    default: ""
+  master_tag_key:
+    description: Master governed tag key holding the approved domain roster.
+    default: "domain"
+  dry_run:
+    description: When "true", no writes are performed (safe default).
+    default: "true"
+  object_kinds:
+    description: >-
+      Comma-separated schema-level object kinds to tag: table_type values
+      (MANAGED, EXTERNAL, VIEW, MATERIALIZED_VIEW, STREAMING_TABLE, METRIC_VIEW, FOREIGN) and/or VOLUME.
+    default: "MANAGED,EXTERNAL,VIEW,MATERIALIZED_VIEW,STREAMING_TABLE,METRIC_VIEW,VOLUME"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      # Set this to your own Databricks CLI profile (see `databricks auth profiles`).
+      profile: DEFAULT
+
+  prod:
+    mode: production
+    workspace:
+      profile: DEFAULT
+    # In production keep dry_run on until you have reviewed a dry-run report, then override per run:
+    #   databricks bundle run domain_tag_propagation --target prod --params catalog_name=<catalog>,dry_run=false

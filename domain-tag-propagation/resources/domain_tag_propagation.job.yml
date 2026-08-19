@@ -1,0 +1,37 @@
+resources:
+  jobs:
+    domain_tag_propagation:
+      name: "[${bundle.target}] Domain Tag Propagation"
+      description: >-
+        Reads the approved domain roster from a master governed tag, ensures each domain's
+        governed tag key and Discover domain card exist, then propagates per-domain tags from
+        tagged schemas down to their tables/views. Idempotent and dry-run capable.
+
+      # Job-level parameters are surfaced to the notebook task as widgets, and can be
+      # overridden per run: `databricks bundle run domain_tag_propagation --params catalog_name=<c>`
+      parameters:
+        - name: catalog_name
+          default: ${var.catalog_name}
+        - name: master_tag_key
+          default: ${var.master_tag_key}
+        - name: dry_run
+          default: ${var.dry_run}
+        - name: object_kinds
+          default: ${var.object_kinds}
+
+      # No cluster is declared, so the notebook task runs on serverless compute.
+      # SET TAG ON <object> requires DBR 16.1+ or current serverless.
+      tasks:
+        - task_key: propagate_domain_tags
+          notebook_task:
+            notebook_path: ../src/domain_tag_propagation.py
+
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+
+      # Optional: uncomment to run on a schedule (paused by default).
+      # schedule:
+      #   quartz_cron_expression: "0 0 9 * * ?"
+      #   timezone_id: "America/Los_Angeles"
+      #   pause_status: PAUSED
