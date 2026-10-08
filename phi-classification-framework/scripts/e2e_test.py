@@ -108,8 +108,13 @@ class Env:
             f"WHERE status IN ('PLANNED','APPLICATION_IN_PROGRESS') LIMIT 1")
 
     def decide(self, item, decision, value="", comment=""):
-        return self.post(f"/items/{item['review_item_id']}/decision",
-                         {"decision": decision, "corrected_tag_value": value, "steward_comment": comment})
+        """Submit through the app's three choices: This is PHI, Not PHI, or Ask Privacy."""
+        action = {"APPROVE_SUGGESTION": "phi", "CORRECT_CLASSIFICATION": "phi", "CONFIRM_NOT_PHI": "not_phi",
+                  "REQUEST_PRIVACY_REVIEW": "privacy"}[decision]
+        if decision == "APPROVE_SUGGESTION":
+            value = item["suggested_tag_value"] or ""
+        return self.post(f"/items/{item['review_item_id']}/decide",
+                         {"action": action, "tag_value": value, "comment": comment, "after": "stay"})
 
     def run_scan(self, **params):
         self.w.jobs.run_now_and_wait(int(self.a.scan_job_id), job_parameters=params or None)
