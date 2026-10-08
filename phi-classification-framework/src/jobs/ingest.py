@@ -110,7 +110,12 @@ def main(argv=None):
         evt(c.EVT_DECISION_RECEIVED, submitted, sub["submitted_by"])
         auth = logic.authorize_reviewer(sub["submitter_role"], sub["submitted_by"],
                                         item["assigned_steward"], item["status"])
-        result = auth if not auth.ok else logic.validate_decision(
+        if not auth.ok:
+            # An unauthorized submission is evidence only; it never changes the item.
+            evt(c.EVT_VALIDATION_FAILED, {"error": auth.error}, sub["submitted_by"])
+            evt(c.SUBMISSION_INGESTED, {"type": sub["submission_type"], "outcome": "rejected: not authorized"})
+            continue
+        result = logic.validate_decision(
             sub["decision"], item["status"], item["suggested_tag_value"],
             sub["corrected_tag_value"], sub["steward_comment"], allowed)
         item.update(submitted, reviewed_by=sub["submitted_by"], reviewed_at=sub["submitted_at"])
