@@ -10,6 +10,7 @@ README, deploy steps, and prerequisites.
 | Demo | What it shows |
 |------|---------------|
 | [`domain-tag-propagation/`](domain-tag-propagation/) | Automates Databricks **Discover data domains** driven from Unity Catalog **governed tags**: reads an approved domain roster from a master governed tag, ensures each domain's governed tag key and Discover domain card exist, then propagates per-domain tags from schemas down to their tables, views, materialized views, streaming tables, metric views, and volumes. Idempotent and dry-run capable. |
+| [`phi-classification-framework/`](phi-classification-framework/) | A governed **PHI classification audit process**: a weekly scan finds columns missing a PHI governed tag, Data Stewards ratify findings in a **Databricks App** (FastAPI) that captures their authenticated identity, and triggered Lakeflow Jobs validate decisions, apply and verify tags, and keep an append-only evidence trail with time-bound non-PHI attestations. |
 
 ## Using a demo
 
