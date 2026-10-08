@@ -2,6 +2,7 @@
 {% block content %}
 <h1>My review queue</h1>
 <p class="muted">Columns that need a PHI classification decision. A missing tag never means "not PHI".</p>
+{% if awaiting %}<p class="flash ok">{{ awaiting }} decision{{ "s" if awaiting != 1 }} you submitted {{ "are" if awaiting != 1 else "is" }} awaiting validation and hidden from this queue. Items return here only if a decision is rejected.</p>{% endif %}
 <h2>Assigned to me</h2>
 {% with rows = mine %}{% include "_items_table.html" %}{% endwith %}
 <h2>My steward groups</h2>

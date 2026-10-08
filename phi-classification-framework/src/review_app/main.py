@@ -65,12 +65,18 @@ def healthz():
 @app.get("/", response_class=HTMLResponse)
 def queue(request: Request, user: User = Depends(current_user)):
     items = BACKEND.open_items()
-    pending = {s["review_item_id"] for s in BACKEND.pending_submissions()}
-    decidable = [i for i in items if i["status"] in c.DECIDABLE_ITEM_STATUSES]
+    # Items with a decision awaiting ingestion leave the queue; a rejected decision brings the item
+    # back as VALIDATION_FAILED.
+    pending_decisions = [s for s in BACKEND.pending_submissions() if s["submission_type"] == c.SUBMISSION_DECISION]
+    awaiting = {s["review_item_id"] for s in pending_decisions}
+    mine_awaiting = len({s["review_item_id"] for s in pending_decisions if s["submitted_by"].lower() == user.email})
+    decidable = [
+        i for i in items if i["status"] in c.DECIDABLE_ITEM_STATUSES and i["review_item_id"] not in awaiting
+    ]
     mine = [i for i in decidable if (i["assigned_steward"] or "").lower() == user.email]
     group = [i for i in decidable if i not in mine and i["steward_group"] in user.groups]
-    return _render(request, "queue.html", user, mine=mine, group=group, pending=pending,
-                   counts=summarize(items))
+    return _render(request, "queue.html", user, mine=mine, group=group, pending=set(),
+                   awaiting=mine_awaiting, counts=summarize(items))
 
 
 @app.get("/items/{review_item_id}", response_class=HTMLResponse)
