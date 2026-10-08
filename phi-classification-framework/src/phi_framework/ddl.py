@@ -3,8 +3,8 @@
 Every statement can be rerun: tables use CREATE TABLE IF NOT EXISTS, and constraints are dropped
 (IF EXISTS) and re-added so a changed value list takes effect on the next deployment.
 """
-from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from . import constants as c
 from .config import FrameworkConfig
@@ -293,30 +293,51 @@ def create_statements(cfg: FrameworkConfig) -> List[str]:
     return stmts
 
 
-def maintenance_statements(cfg: FrameworkConfig) -> List[str]:
-    """Statements that bring an existing deployment up to date: comments, properties, keys, CHECKs."""
+@dataclass
+class ExistingState:
+    """What is already deployed, so maintenance only issues statements that change something."""
+
+    table_comments: Dict[str, Optional[str]] = field(default_factory=dict)
+    column_comments: Dict[Tuple[str, str], Optional[str]] = field(default_factory=dict)
+    properties: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    key_constraints: Set[str] = field(default_factory=set)
+
+
+def maintenance_statements(cfg: FrameworkConfig, existing: Optional[ExistingState] = None) -> List[str]:
+    """Statements that bring a deployment up to date: comments, properties, keys, CHECKs, make_key.
+
+    With `existing` empty every statement is issued, which is always safe to rerun.
+    """
+    existing = existing or ExistingState()
     stmts: List[str] = []
     for t in TABLES:
-        stmts.append(f"COMMENT ON TABLE {cfg.table(t.name)} IS {quote_literal(t.comment)}")
-        if t.append_only:
+        props = existing.properties.get(t.name, {})
+        if existing.table_comments.get(t.name) != t.comment:
+            stmts.append(f"COMMENT ON TABLE {cfg.table(t.name)} IS {quote_literal(t.comment)}")
+        if t.append_only and props.get("delta.appendOnly") != "true":
             stmts.append(f"ALTER TABLE {cfg.table(t.name)} SET TBLPROPERTIES ('delta.appendOnly' = 'true')")
         for col in t.columns:
-            stmts.append(
-                f"ALTER TABLE {cfg.table(t.name)} ALTER COLUMN {col.name} COMMENT {quote_literal(col.comment)}"
-            )
-    # Informational keys: drop foreign keys first, then primary keys, then re-add both.
-    for table, name, _, _, _ in FOREIGN_KEYS:
-        stmts.append(f"ALTER TABLE {cfg.table(table)} DROP CONSTRAINT IF EXISTS {name}")
+            if existing.column_comments.get((t.name, col.name)) != col.comment:
+                stmts.append(
+                    f"ALTER TABLE {cfg.table(t.name)} ALTER COLUMN {col.name} COMMENT {quote_literal(col.comment)}"
+                )
+    # Informational keys are added only when missing; names are fixed, so a present key is current.
     for t in TABLES:
-        stmts.append(f"ALTER TABLE {cfg.table(t.name)} DROP PRIMARY KEY IF EXISTS CASCADE")
-        stmts.append(f"ALTER TABLE {cfg.table(t.name)} ADD CONSTRAINT pk_{t.name} PRIMARY KEY ({t.pk})")
+        if f"pk_{t.name}" not in existing.key_constraints:
+            stmts.append(f"ALTER TABLE {cfg.table(t.name)} ADD CONSTRAINT pk_{t.name} PRIMARY KEY ({t.pk})")
     for table, name, col, ref_table, ref_col in FOREIGN_KEYS:
-        stmts.append(
-            f"ALTER TABLE {cfg.table(table)} ADD CONSTRAINT {name} FOREIGN KEY ({col}) "
-            f"REFERENCES {cfg.table(ref_table)} ({ref_col})"
-        )
+        if name not in existing.key_constraints:
+            stmts.append(
+                f"ALTER TABLE {cfg.table(table)} ADD CONSTRAINT {name} FOREIGN KEY ({col}) "
+                f"REFERENCES {cfg.table(ref_table)} ({ref_col})"
+            )
+    # CHECKs are replaced when their expression differs, so a changed value list takes effect.
     for table, name, expr in check_constraints(cfg):
-        stmts.append(f"ALTER TABLE {cfg.table(table)} DROP CONSTRAINT IF EXISTS {name}")
+        current = existing.properties.get(table, {}).get(f"delta.constraints.{name.lower()}")
+        if current == expr:
+            continue
+        if current is not None or not existing.properties:
+            stmts.append(f"ALTER TABLE {cfg.table(table)} DROP CONSTRAINT IF EXISTS {name}")
         stmts.append(f"ALTER TABLE {cfg.table(table)} ADD CONSTRAINT {name} CHECK ({expr})")
     stmts.append(
         f"""CREATE OR REPLACE FUNCTION {cfg.schema_fqn}.make_key(prefix STRING, parts ARRAY<STRING>)

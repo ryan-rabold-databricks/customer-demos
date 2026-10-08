@@ -42,3 +42,5 @@ resources:
               - ${var.billing_steward_group}
               - --governance_owner
               - ${var.governance_owner}
+              - --warehouse_id
+              - ${var.warehouse_id}

@@ -7,6 +7,7 @@ data contains no real PHI.
 """
 import logging
 import sys
+import time
 
 # Make the bundle's src directory importable; the job passes --src_root ${workspace.file_path}/src.
 if "--src_root" in sys.argv:
@@ -28,11 +29,34 @@ def _extra(p):
     p.add_argument("--clinical_steward_group", default="")
     p.add_argument("--billing_steward_group", default="")
     p.add_argument("--governance_owner", default="")
+    p.add_argument("--warehouse_id", default="", help="SQL warehouse for the demo materialized view.")
 
 
 def run_all(spark, statements):
     for stmt in statements:
         spark.sql(stmt)
+
+
+def existing_state(spark, cfg) -> ddl.ExistingState:
+    """Read deployed comments, properties, and key constraints for the governance tables."""
+    cat, sch = quote_literal(cfg.catalog), quote_literal(cfg.governance_schema)
+    info = f"`{cfg.catalog}`.information_schema"
+    state = ddl.ExistingState()
+    for r in spark.sql(f"SELECT table_name, comment FROM {info}.tables WHERE table_schema = {sch}").collect():
+        state.table_comments[r.table_name] = r.comment
+    for r in spark.sql(
+        f"SELECT table_name, column_name, comment FROM {info}.columns WHERE table_schema = {sch}"
+    ).collect():
+        state.column_comments[(r.table_name, r.column_name)] = r.comment
+    for r in spark.sql(
+        f"SELECT constraint_name FROM {info}.table_constraints "
+        f"WHERE table_catalog = {cat} AND table_schema = {sch} AND constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')"
+    ).collect():
+        state.key_constraints.add(r.constraint_name)
+    for t in ddl.TABLES:
+        props = spark.sql(f"SHOW TBLPROPERTIES {cfg.table(t.name)}").collect()
+        state.properties[t.name] = {r.key: r.value for r in props}
+    return state
 
 
 def grant_app(spark, cfg, client_id: str) -> None:
@@ -42,6 +66,19 @@ def grant_app(spark, cfg, client_id: str) -> None:
         f"GRANT MODIFY ON TABLE {cfg.table('classification_decision_submission')} TO {principal}",
     ])
     log.info("Granted review app %s read access and submission MODIFY.", client_id)
+
+
+def _run_on_warehouse(warehouse_id: str, statement: str) -> None:
+    from databricks.sdk import WorkspaceClient
+    from databricks.sdk.service.sql import StatementState
+
+    w = WorkspaceClient()
+    resp = w.statement_execution.execute_statement(statement=statement, warehouse_id=warehouse_id, wait_timeout="50s")
+    while resp.status.state in (StatementState.PENDING, StatementState.RUNNING):
+        time.sleep(5)
+        resp = w.statement_execution.get_statement(resp.statement_id)
+    if resp.status.state != StatementState.SUCCEEDED:
+        raise RuntimeError(f"Warehouse statement failed: {resp.status.error}")
 
 
 def seed_demo(spark, cfg, args) -> None:
@@ -72,11 +109,11 @@ def seed_demo(spark, cfg, args) -> None:
         spark.sql(f"""
             INSERT INTO {clinical}.patient_encounter
             SELECT concat('ENC-', lpad(id, 5, '0')), concat('Synthetic Patient ', id),
-                   concat('MRN', lpad(id * 7919 % 100000, 6, '0')), date_add(date'1950-01-01', id * 397 % 25000),
-                   concat('patient', id, '@example.org'), timestamp'2026-09-01 08:00:00' + make_interval(0, 0, 0, id % 30, id % 24),
+                   concat('MRN', lpad(id * 7919 % 100000, 6, '0')), date_add(date'1950-01-01', CAST(id * 397 % 25000 AS INT)),
+                   concat('patient', id, '@example.org'), timestamp'2026-09-01 08:00:00' + make_interval(0, 0, 0, CAST(id % 30 AS INT), CAST(id % 24 AS INT)),
                    element_at(array('EPIC', 'CERNER', 'MEDITECH'), id % 3 + 1),
                    element_at(array('E11.9', 'I10', 'J45.909', 'M54.5'), id % 4 + 1)
-            FROM range(1, 51) AS t(id)""")
+            FROM (SELECT CAST(id AS INT) AS id FROM range(1, 51))""")
     if spark.sql(f"SELECT count(*) FROM {billing}.claim").first()[0] == 0:
         spark.sql(f"""
             INSERT INTO {billing}.claim
@@ -84,15 +121,14 @@ def seed_demo(spark, cfg, args) -> None:
                    concat('900-', lpad(id % 100, 2, '0'), '-', lpad(id * 37 % 10000, 4, '0')),
                    concat('HPM', lpad(id * 104729 % 1000000, 7, '0')),
                    CAST(100 + id * 13.37 AS DECIMAL(12,2)), element_at(array('PAYER-A', 'PAYER-B'), id % 2 + 1)
-            FROM range(1, 51) AS t(id)""")
-    try:
-        spark.sql(f"""
+            FROM (SELECT CAST(id AS INT) AS id FROM range(1, 51))""")
+    if args.warehouse_id:
+        # Materialized views are created on a SQL warehouse; serverless job compute cannot create them.
+        _run_on_warehouse(args.warehouse_id, f"""
             CREATE MATERIALIZED VIEW IF NOT EXISTS {clinical}.encounter_daily_summary
             COMMENT 'Daily encounter counts by source system'
             AS SELECT date(admit_ts) AS admit_date, source_system_code, count(*) AS encounters
                FROM {clinical}.patient_encounter GROUP BY ALL""")
-    except Exception as e:  # noqa: BLE001 - the demo still works without the MV
-        log.warning("Materialized view not created (needs serverless SQL support): %s", str(e)[:300])
 
     scopes = [
         ("SCOPE-CLINICAL-" + cfg.env.upper(), DEMO_SCHEMAS[0], "HIGH", args.clinical_steward_group),
@@ -129,7 +165,9 @@ def main(argv=None):
     cfg, args = config.parse(__doc__, argv, _extra)
     spark = get_spark()
     run_all(spark, ddl.create_statements(cfg))
-    run_all(spark, ddl.maintenance_statements(cfg))
+    statements = ddl.maintenance_statements(cfg, existing_state(spark, cfg))
+    log.info("Applying %d maintenance statements.", len(statements))
+    run_all(spark, statements)
     log.info("Governance tables, keys, constraints, and comments are up to date.")
     if args.app_sp_client_id:
         grant_app(spark, cfg, args.app_sp_client_id)

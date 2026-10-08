@@ -4,8 +4,6 @@ resources:
       name: phi-review-${var.env}
       description: Steward review queue for PHI classification decisions. Appends to classification_decision_submission only.
       source_code_path: ../src
-      user_api_scopes:
-        - iam.current-user:read
       config:
         command: ["uvicorn", "review_app.main:app", "--host", "0.0.0.0", "--port", "8000"]
         env:
