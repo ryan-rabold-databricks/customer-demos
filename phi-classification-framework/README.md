@@ -75,8 +75,10 @@ Design rules carried from the governance process:
 ```bash
 cd phi-classification-framework
 
-# 1. Point the dev target at your workspace and objects: edit targets.dev in databricks.yml
-#    (profile, catalog, allowed_catalogs, warehouse_id, governance_group, steward groups).
+# 1. Point the dev target at your workspace: set targets.dev.workspace.profile and the group
+#    variables in databricks.yml, and export the workspace-specific values:
+export DATABRICKS_CONFIG_PROFILE=<profile>
+export BUNDLE_VAR_catalog=<catalog> BUNDLE_VAR_allowed_catalogs=<catalog> BUNDLE_VAR_warehouse_id=<warehouse-id>
 
 # 2. Create the governance tables once. Table-update triggers require their tables to exist.
 python scripts/bootstrap_tables.py --profile <profile> --warehouse_id <warehouse-id> \

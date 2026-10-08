@@ -57,12 +57,11 @@ targets:
     default: true
     workspace:
       # Set to your own Databricks CLI profile (see `databricks auth profiles`).
-      profile: fevm-classic
+      profile: DEFAULT
+    # catalog, allowed_catalogs, and warehouse_id have no defaults: pass them with --var or
+    # BUNDLE_VAR_catalog / BUNDLE_VAR_allowed_catalogs / BUNDLE_VAR_warehouse_id.
     variables:
       env: dev
-      catalog: rtr_demo_catalog
-      allowed_catalogs: rtr_demo_catalog
-      warehouse_id: 5a3e1a5cfdf513f1
       governance_group: data-governance-team
       governance_owner: data-governance-team
       seed_demo: "true"
@@ -72,7 +71,7 @@ targets:
   prod:
     mode: production
     workspace:
-      profile: fevm-classic
+      profile: DEFAULT
     # Production runs as a dedicated service principal and is deployed only from CI:
     # run_as:
     #   service_principal_name: <framework service principal application ID>
