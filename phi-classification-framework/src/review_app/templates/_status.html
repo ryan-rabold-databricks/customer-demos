@@ -1,0 +1,2 @@
+{# Usage: {% with status=..., title=... %}{% include "_status.html" %}{% endwith %} #}
+{% set label = status_label(status) %}<span class="status {{ label[1] }}" title="{{ status }}">{{ label[0] }}</span>

@@ -98,7 +98,16 @@ def main(argv=None):
             continue
 
         submitted = {k: sub[k] for k in ("decision", "corrected_tag_value", "steward_comment")}
-        if item["status"] not in c.DECIDABLE_ITEM_STATUSES:
+        # A retried run can find a submission whose state changes committed before its events did.
+        # Replay it: plans and attestations are keyed deterministically and events are keyed by run,
+        # so re-deriving them writes only what is missing, and the item is left as it is.
+        replay = (item["status"] not in c.DECIDABLE_ITEM_STATUSES
+                  and item["reviewed_by"] == sub["submitted_by"] and item["reviewed_at"] == sub["submitted_at"]
+                  and all(item[k] == v for k, v in submitted.items()))
+        if replay:
+            log.info("Replaying already-applied submission %s", sid)
+            item = {**item, "status": c.PENDING_STEWARD_REVIEW}
+        elif item["status"] not in c.DECIDABLE_ITEM_STATUSES:
             recorded = {k: item[k] for k in submitted}
             if submitted != recorded:
                 evt(c.CHANGE_IGNORED_ALREADY_RESOLVED,
@@ -119,7 +128,8 @@ def main(argv=None):
             sub["decision"], item["status"], item["suggested_tag_value"],
             sub["corrected_tag_value"], sub["steward_comment"], allowed)
         item.update(submitted, reviewed_by=sub["submitted_by"], reviewed_at=sub["submitted_at"])
-        changed[item["review_item_id"]] = item
+        if not replay:
+            changed[item["review_item_id"]] = item
 
         if not result.ok:
             item["status"] = c.VALIDATION_FAILED
@@ -138,7 +148,7 @@ def main(argv=None):
         elif decision == c.CONFIRM_NOT_PHI:
             ident = _ident(item)
             prior = active_atts.get(ident)
-            if prior is not None:
+            if prior is not None and prior["attestation_id"] != make_key("ATT", [item["review_item_id"]]):
                 superseded.append({"attestation_id": prior["attestation_id"], "superseded_at": now})
             att = {
                 "attestation_id": make_key("ATT", [item["review_item_id"]]),

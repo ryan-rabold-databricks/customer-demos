@@ -1,58 +1,116 @@
 {% extends "base.html" %}
 {% block title %}{{ item.column_name }} · PHI Review{% endblock %}
+{% macro submit_buttons() %}
+  <div class="buttons">
+    <button type="submit" name="after" value="next">Submit and next</button>
+    <button type="submit" name="after" value="stay" class="secondary">Submit</button>
+  </div>
+{% endmacro %}
 {% block content %}
 <p><a href="/">← Back to queue</a></p>
-<h1>{{ item.catalog_name }}.{{ item.schema_name }}.{{ item.table_name }}.<b>{{ item.column_name }}</b></h1>
-<dl class="grid">
-  <dt>Status</dt><dd>{{ item.status }}</dd>
-  <dt>Issue</dt><dd>{{ item.issue_type }}</dd>
-  <dt>Object type</dt><dd>{{ item.table_type }}</dd>
-  <dt>Data type</dt><dd>{{ item.full_data_type }}</dd>
-  <dt>Description</dt><dd>{{ item.column_comment or "—" }}</dd>
-  <dt>Current tag</dt><dd>{{ item.current_tag_value or "none" }}</dd>
-  <dt>Suggested value</dt><dd>{{ item.suggested_tag_value or "none" }}{% if item.suggestion_reason %} <span class="muted">({{ item.suggestion_reason }})</span>{% endif %}</dd>
-  <dt>Scope</dt><dd>{{ item.scope_id }} · {{ item.risk_tier }} · stewards: {{ item.steward_group }}</dd>
-  <dt>Assigned steward</dt><dd>{{ item.assigned_steward or "unassigned" }}</dd>
-  <dt>Due</dt><dd>{{ item.due_at }}</dd>
-  {% if item.decision %}<dt>Recorded decision</dt><dd>{{ item.decision }} by {{ item.reviewed_by }} at {{ item.reviewed_at }}</dd>{% endif %}
-  {% if item.application_error %}<dt>Application error</dt><dd class="err">{{ item.application_error }}</dd>{% endif %}
-</dl>
+<h1>{{ item.schema_name }}.{{ item.table_name }}.<b>{{ item.column_name }}</b></h1>
+<p class="lead">{{ item.reason }}</p>
+<p>{% with status=item.status %}{% include "_status.html" %}{% endwith %}
+   <span class="muted">Due {{ item.due_at.strftime("%b %-d, %Y") if item.due_at else "—" }} · {{ item.risk_tier }} scope · stewards: {{ item.steward_group }} · assigned: {{ item.assigned_steward or "unassigned" }}</span></p>
 
-{% if pending %}<p class="flash ok">A submission for this item is waiting for ingestion.</p>{% endif %}
-
-{% if can_decide %}
-<h2>Decision</h2>
-<p class="muted">You are deciding as <b>{{ role }}</b>. Your identity and the submission time are recorded automatically.</p>
-<form method="post" action="/items/{{ item.review_item_id }}/decision" class="decision">
-  <fieldset>
-    {% for d in decisions %}
-      {% if not (d == "REQUEST_PRIVACY_REVIEW" and item.status == "NEEDS_PRIVACY_REVIEW") %}
-      <label><input type="radio" name="decision" value="{{ d }}" required
-        {% if d == "APPROVE_SUGGESTION" and not item.suggested_tag_value %}disabled{% endif %}> {{ d.replace("_", " ").title() }}</label>
-      {% endif %}
-    {% endfor %}
-  </fieldset>
-  <label>Corrected value (for Correct Classification)
-    <select name="corrected_tag_value">
-      <option value="">—</option>
-      {% for v in allowed %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
-    </select>
-  </label>
-  <label>Comment (required to confirm not PHI or request Privacy review)
-    <textarea name="steward_comment" rows="3" maxlength="2000"></textarea>
-  </label>
-  <button type="submit">Submit decision</button>
-</form>
-{% elif role is none %}
-<p class="muted">You are not the assigned steward, a member of this scope's steward group, or in Data Governance.</p>
+{% if item.status == "VALIDATION_FAILED" and item.rejection %}
+<div class="callout bad"><b>Your last decision was rejected.</b> {{ item.rejection }} Choose again below.</div>
+{% endif %}
+{% if pending %}
+<div class="callout wait">A decision for this column is waiting for validation. This page updates once it is processed.</div>
+{% endif %}
+{% if item.application_error %}
+<div class="callout bad"><b>Tagging failed:</b> {{ item.application_error }}</div>
 {% endif %}
 
-<h2>Audit trail</h2>
+<div class="columns">
+  <div class="main">
+    {% if can_decide %}
+    <h2>Your decision</h2>
+    <p class="muted">Deciding as <b>{{ role.replace("_", " ").lower() }}</b>. Your identity and the time are recorded automatically.</p>
+
+    <form method="post" action="/items/{{ item.review_item_id }}/decide" class="action-card">
+      <input type="hidden" name="action" value="phi">
+      <h3>This is PHI</h3>
+      <label>PHI type
+        <select name="tag_value" required>
+          <option value="" {% if not item.suggested_tag_value %}selected{% endif %} disabled>Choose a value…</option>
+          {% for v in allowed %}
+            <option value="{{ v }}" {% if v == item.suggested_tag_value %}selected{% endif %}>
+              {{ value_label(v) }}{% if v == item.suggested_tag_value %} (suggested){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if item.suggested_tag_value %}<p class="muted small">Suggested: {{ value_label(item.suggested_tag_value) }}{% if item.suggestion_reason %} ({{ item.suggestion_reason }}){% endif %}.</p>{% endif %}
+      <label>Comment (optional)<textarea name="comment" rows="2" maxlength="2000"></textarea></label>
+      {{ submit_buttons() }}
+    </form>
+
+    <form method="post" action="/items/{{ item.review_item_id }}/decide" class="action-card">
+      <input type="hidden" name="action" value="not_phi">
+      <h3>Not PHI</h3>
+      <label>Why is this column not PHI? (required)
+        <textarea name="comment" rows="2" maxlength="2000" required placeholder="For example: technical source code, contains no individual identifier"></textarea></label>
+      <p class="muted small">This records a not-PHI attestation that expires after the scope's recertification interval{% if item.current_tag_value %} and removes the current tag '{{ item.current_tag_value }}'{% endif %}.</p>
+      {{ submit_buttons() }}
+    </form>
+
+    {% if item.status != "NEEDS_PRIVACY_REVIEW" %}
+    <form method="post" action="/items/{{ item.review_item_id }}/decide" class="action-card">
+      <input type="hidden" name="action" value="privacy">
+      <h3>Not sure? Ask Privacy</h3>
+      <label>Your question (required)<textarea name="comment" rows="2" maxlength="2000" required></textarea></label>
+      <p class="muted small">The column waits for Privacy; Data Governance records Privacy's answer.</p>
+      {{ submit_buttons() }}
+    </form>
+    {% else %}
+    <p class="callout wait">This column is waiting for Privacy. As Data Governance, record Privacy's answer with one of the choices above.</p>
+    {% endif %}
+    {% elif role is none %}
+    <p class="callout">You are not the assigned steward, a member of this scope's steward group, or in Data Governance, so you cannot decide this column.</p>
+    {% endif %}
+
+    <details class="help">
+      <summary>What each PHI type means</summary>
+      <table class="compact">
+        {% for v in allowed %}<tr><td class="mono">{{ v }}</td><td>{{ value_label(v).split(": ", 1)[1] if ": " in value_label(v) else "" }}</td></tr>{% endfor %}
+      </table>
+      {% if policy_description %}<h4>From the governed tag policy</h4><pre class="policy">{{ policy_description }}</pre>{% endif %}
+    </details>
+  </div>
+
+  <aside>
+    <h2>Column</h2>
+    <dl class="grid">
+      <dt>Data type</dt><dd class="mono">{{ item.full_data_type }}</dd>
+      <dt>Description</dt><dd>{{ item.column_comment or "—" }}</dd>
+      <dt>Object type</dt><dd>{{ item.table_type.replace("_", " ").title() }}</dd>
+      <dt>Current tag</dt><dd>{{ item.current_tag_value or "none" }}</dd>
+    </dl>
+    <p><a href="{{ explorer_url }}" target="_blank" rel="noopener">Open this table in Catalog Explorer ↗</a><br>
+      <span class="muted small">Uses your own permissions, including any sample data you are allowed to see.</span></p>
+
+    <h2>Other columns in this table</h2>
+    <table class="compact">
+      {% for s in siblings %}
+      <tr class="{{ 'current' if s.column_name == item.column_name }}">
+        <td>{% if s.review_item_id and s.column_name != item.column_name %}<a href="/items/{{ s.review_item_id }}">{{ s.column_name }}</a>{% else %}<b>{{ s.column_name }}</b>{% endif %}
+          <div class="muted small">{{ s.column_comment or "" }}</div></td>
+        <td>{% if s.status == "TAG_VERIFIED" %}PHI: {{ s.tag_value }}{% elif s.status == "ATTESTED_NOT_PHI" %}Not PHI{% elif s.status == "CLOSED_NO_ACTION" %}Closed{% else %}In review{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </aside>
+</div>
+
+<h2>History</h2>
 <table>
-  <thead><tr><th>When (UTC)</th><th>Event</th><th>Actor</th><th>Details</th></tr></thead>
+  <thead><tr><th>When (UTC)</th><th>What happened</th><th>By</th><th></th></tr></thead>
   <tbody>
   {% for e in events %}
-    <tr><td>{{ e.event_timestamp }}</td><td>{{ e.event_type }}</td><td>{{ e.business_actor or "" }}</td><td class="mono">{{ e.details or "" }}</td></tr>
+    <tr><td>{{ e.event_timestamp.strftime("%Y-%m-%d %H:%M") if e.event_timestamp else "" }}</td><td>{{ event_label(e.event_type) }}</td>
+        <td>{{ e.business_actor or "automation" }}</td>
+        <td>{% if e.details %}<details><summary class="small">details</summary><span class="mono small">{{ e.details }}</span></details>{% endif %}</td></tr>
   {% else %}<tr><td colspan="4" class="muted">No events.</td></tr>{% endfor %}
   </tbody>
 </table>

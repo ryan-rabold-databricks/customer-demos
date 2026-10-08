@@ -87,8 +87,21 @@ class Store:
         columns = [col.name for col in tdef.columns]
         view = self._temp_view(tdef, full, columns)
         values = ", ".join(self._value_expr(tdef, n) for n in columns)
+        target = self.cfg.table(tdef.name)
+        if tdef.append_only:
+            # Blind append: a MERGE reads the whole target and conflicts with concurrent appends from
+            # other jobs. Keys already present are filtered out first; keys include the run ID and each
+            # job runs one at a time, so no concurrent writer can add the same key.
+            existing = {r[0] for r in self.spark.sql(
+                f"SELECT s.{tdef.pk} FROM {view} s LEFT SEMI JOIN {target} t ON t.{tdef.pk} = s.{tdef.pk}").collect()}
+            full = [r for r in full if r[tdef.pk] not in existing]
+            if not full:
+                return 0
+            view = self._temp_view(tdef, full, columns)
+            self.spark.sql(f"INSERT INTO {target} ({', '.join(columns)}) SELECT {values} FROM {view} s")
+            return len(full)
         self.spark.sql(
-            f"MERGE INTO {self.cfg.table(tdef.name)} t USING {view} s ON t.{tdef.pk} = s.{tdef.pk} "
+            f"MERGE INTO {target} t USING {view} s ON t.{tdef.pk} = s.{tdef.pk} "
             f"WHEN NOT MATCHED THEN INSERT ({', '.join(columns)}) VALUES ({values})"
         )
         return len(rows)

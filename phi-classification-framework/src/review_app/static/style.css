@@ -21,3 +21,29 @@ form.decision label { display: grid; gap: 4px; }
 form.inline { display: flex; gap: 6px; }
 button { background: var(--ink); color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
 input, select, textarea { padding: 5px; border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+.small { font-size: 12px; }
+.lead { font-size: 15px; margin: 4px 0 8px; }
+.empty { padding: 24px; background: #f4f6f7; border-radius: 6px; }
+.status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #eef2f3; white-space: nowrap; }
+.status.todo { background: #e8f0fe; color: #174ea6; }
+.status.bad { background: var(--bad); color: #a3261b; }
+.status.wait { background: #fff4e5; color: #8a4b00; }
+.status.done { background: var(--ok); color: #1e6b34; }
+.callout { padding: 10px 14px; border-radius: 6px; background: #f4f6f7; margin: 10px 0; }
+.callout.bad { background: var(--bad); } .callout.wait { background: #fff4e5; }
+.columns { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 32px; align-items: start; }
+@media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
+.action-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 12px 0; display: grid; gap: 8px; }
+.action-card h3 { margin: 0; font-size: 15px; }
+.action-card label { display: grid; gap: 4px; }
+.buttons { display: flex; gap: 8px; }
+button.secondary { background: #fff; color: var(--ink); border: 1px solid var(--ink); }
+.bulk-bar { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+.table-group h3 { font-size: 14px; margin: 18px 0 4px; display: flex; gap: 12px; align-items: baseline; }
+td.check, th.check { width: 28px; }
+table.compact td { padding: 4px 6px; }
+tr.current { background: #fffbea; }
+details.help { margin-top: 20px; } details.help summary { cursor: pointer; font-weight: 600; }
+pre.policy { white-space: pre-wrap; font-family: inherit; font-size: 12px; color: var(--muted); max-height: 260px; overflow: auto; }
+aside h2:first-child { margin-top: 0; }

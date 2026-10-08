@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>My decisions</h1>
+<p class="muted">Everything you submitted, newest first, and what happened to it. New submissions are validated within a few minutes.</p>
+<table>
+  <thead><tr><th>Submitted (UTC)</th><th>Column</th><th>You chose</th><th>Outcome</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r.submitted_at.strftime("%Y-%m-%d %H:%M") if r.submitted_at else "" }}</td>
+      <td><a href="/items/{{ r.review_item_id }}">{{ r.schema_name }}.{{ r.table_name }}.<b>{{ r.column_name }}</b></a></td>
+      <td>{% if r.submission_type == "ASSIGNMENT" %}Assigned to {{ r.assigned_steward }}
+          {% else %}{{ decision_label(r.decision) }}{% if r.corrected_tag_value %}: {{ r.corrected_tag_value }}{% endif %}
+          {% if r.steward_comment %}<div class="muted small">“{{ r.steward_comment }}”</div>{% endif %}{% endif %}</td>
+      <td><span class="status {{ r.tone }}">{{ r.outcome_text }}</span>
+          {% if r.application_error and r.item_status == "APPLICATION_FAILED" %}<div class="err small">{{ r.application_error }}</div>{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="4" class="muted">You have not submitted anything yet.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

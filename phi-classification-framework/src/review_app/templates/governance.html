@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Data Governance</h1>
-<p class="counts">{% for k, v in counts|dictsort %}<span class="pill">{{ k }}: {{ v }}</span>{% endfor %}</p>
+<p class="counts">{% for k, v in counts|dictsort %}<span class="pill" title="{{ k }}">{{ status_label(k)[0] }}: {{ v }}</span>{% endfor %}</p>
 
 <h2>Triage open items</h2>
 <table>
-  <thead><tr><th>Column</th><th>Issue</th><th>Status</th><th>Steward group</th><th>Assigned steward</th></tr></thead>
+  <thead><tr><th>Column</th><th>Why it's here</th><th>Status</th><th>Steward group</th><th>Assigned steward</th></tr></thead>
   <tbody>
   {% for i in items %}
     <tr>
       <td><a href="/items/{{ i.review_item_id }}">{{ i.schema_name }}.{{ i.table_name }}.<b>{{ i.column_name }}</b></a></td>
-      <td>{{ i.issue_type }}</td>
-      <td>{{ i.status }}{% if i.review_item_id in pending %} <span class="pill">submitted</span>{% endif %}</td>
+      <td>{{ i.reason }}{% if i.rejection %}<div class="err small">Rejected: {{ i.rejection }}</div>{% endif %}</td>
+      <td>{% with status=i.status %}{% include "_status.html" %}{% endwith %}{% if i.review_item_id in pending %} <span class="pill">submitted</span>{% endif %}</td>
       <td>{{ i.steward_group }}</td>
       <td>
         <form method="post" action="/items/{{ i.review_item_id }}/assign" class="inline">

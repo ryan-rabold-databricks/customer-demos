@@ -1,11 +1,55 @@
 {% extends "base.html" %}
+{% macro table_groups(groups, section) %}
+  {% for table, rows in groups %}
+  <section class="table-group">
+    <h3><label><input type="checkbox" class="select-all"> {{ table }}</label>
+      <span class="muted">{{ rows|length }} column{{ "s" if rows|length != 1 }}</span></h3>
+    <table>
+      <thead><tr><th class="check"></th><th>Column</th><th>Why it's here</th><th>Suggested</th><th>Status</th><th>Due</th></tr></thead>
+      <tbody>
+      {% for i in rows %}
+        <tr>
+          <td class="check"><input type="checkbox" name="item_ids" value="{{ i.review_item_id }}" aria-label="Select {{ i.column_name }}"></td>
+          <td><a href="/items/{{ i.review_item_id }}"><b>{{ i.column_name }}</b></a><div class="muted small">{{ i.full_data_type }}</div></td>
+          <td>{{ i.reason }}{% if i.rejection %}<div class="err small">Rejected: {{ i.rejection }}</div>{% endif %}</td>
+          <td>{{ i.suggested_tag_value or "—" }}</td>
+          <td>{% with status=i.status %}{% include "_status.html" %}{% endwith %}</td>
+          <td>{{ i.due_at.strftime("%b %-d") if i.due_at else "" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endfor %}
+{% endmacro %}
 {% block content %}
 <h1>My review queue</h1>
-<p class="muted">Columns that need a PHI classification decision. A missing tag never means "not PHI".</p>
-{% if awaiting %}<p class="flash ok">{{ awaiting }} decision{{ "s" if awaiting != 1 }} you submitted {{ "are" if awaiting != 1 else "is" }} awaiting validation and hidden from this queue. Items return here only if a decision is rejected.</p>{% endif %}
-<h2>Assigned to me</h2>
-{% with rows = mine %}{% include "_items_table.html" %}{% endwith %}
-<h2>My steward groups</h2>
-<p class="muted">Items in scopes whose steward group you belong to, assigned to another steward or not yet assigned.</p>
-{% with rows = group %}{% include "_items_table.html" %}{% endwith %}
+<p class="muted">Columns that need a PHI classification decision, grouped by table. A missing tag never means "not PHI".</p>
+{% if awaiting %}<p class="flash ok">{{ awaiting }} decision{{ "s" if awaiting != 1 }} you submitted {{ "are" if awaiting != 1 else "is" }} awaiting validation and hidden from this queue. Items return here only if a decision is rejected. <a href="/history">See My decisions</a>.</p>{% endif %}
+
+{% if not mine and not group %}
+  <p class="empty">Nothing needs your decision right now.</p>
+{% else %}
+<form method="post" action="/bulk" id="bulk-form">
+  <div class="bulk-bar">
+    <b>For selected columns:</b>
+    <input name="comment" placeholder="Reason (required for Not PHI)" size="40" maxlength="2000">
+    <button type="submit" name="action" value="not_phi">Mark not PHI</button>
+    <button type="submit" name="action" value="phi" class="secondary">Approve suggested values</button>
+    <span class="muted small">Open a column to choose a different value or ask Privacy.</span>
+  </div>
+  {% if mine %}<h2>Assigned to me</h2>{{ table_groups(mine, "mine") }}{% endif %}
+  {% if group %}<h2>My steward groups</h2>
+    <p class="muted">Items in scopes whose steward group you belong to, assigned to someone else or not yet assigned.</p>
+    {{ table_groups(group, "group") }}{% endif %}
+</form>
+{% endif %}
+<script>
+  // "Select all" per table: checks every row checkbox in the same table section.
+  document.querySelectorAll(".select-all").forEach(function (box) {
+    box.addEventListener("change", function () {
+      box.closest("section").querySelectorAll("input[name=item_ids]").forEach(function (c) { c.checked = box.checked; });
+    });
+  });
+</script>
 {% endblock %}

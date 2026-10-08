@@ -94,8 +94,18 @@ databricks bundle run phi_review_app -t dev
 databricks bundle run phi_scan -t dev
 ```
 
-Open the app URL printed by step 4. Stewards see items in **My queue**; members of the governance group
-also see **Data Governance** for triage (assigning stewards), corrections, and batch status.
+Open the app URL printed by step 4.
+
+- **My queue** groups open columns by table, explains in plain language why each column is there, and
+  shows the reason when a decision was rejected. Select columns to mark them not PHI with one shared
+  reason, or to approve their suggested values.
+- **Each column** offers three choices: *This is PHI* (pick the value; the suggestion is pre-selected),
+  *Not PHI* (reason required), or *Ask Privacy*. *Submit and next* moves to the next column in the queue.
+  The page shows the table's other columns and their outcomes, a Catalog Explorer link that opens with
+  the user's own permissions, and definitions of each allowed value from the governed tag policy.
+- **My decisions** lists everything the user submitted and what happened to it.
+- Members of the governance group also see **Data Governance** for assigning stewards, corrections, and
+  batch status.
 
 To open a correction outside the app:
 
@@ -107,7 +117,8 @@ databricks bundle run phi_scan -t dev --params \
 ## Test
 
 ```bash
-pytest tests/                       # unit tests for the workflow rules (no workspace needed)
+pip install -r src/requirements.txt pytest
+pytest tests/                       # workflow rules, app wording, and page renders (no workspace needed)
 
 python scripts/e2e_test.py --profile <profile> --warehouse_id <warehouse-id> \
   --app_url <app-url> --catalog <catalog> --scan_job_id <scan-job-id>
@@ -166,7 +177,12 @@ tests/test_logic.py            Unit tests
   principal (see the commented `run_as` in `databricks.yml`). That identity needs `ASSIGN` on the governed
   tag and `APPLY TAG` on the scoped catalogs.
 - Set `max_concurrent_runs: 1` (already set) and keep governance tables unpartitioned with deletion
-  vectors so concurrent jobs conflict only at row level.
+  vectors so concurrent jobs conflict only at row level. Append-only tables are written with blind
+  appends (after filtering keys that already exist), because an insert-only `MERGE` reads the whole
+  table and conflicts with concurrent appends from another job.
+- A task retry keeps the job run ID (verified in dev), so a retried run rebuilds the same keys. If a
+  retry finds a submission whose changes committed before its events did, ingestion replays it and
+  writes only the missing records.
 - Exclude shallow clones, views, and foreign tables (the scan covers `MANAGED`, `EXTERNAL`,
   `STREAMING_TABLE`, and `MATERIALIZED_VIEW`). Pipeline-internal `__materialization_*` and `event_log_*`
   tables are skipped.
