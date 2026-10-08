@@ -199,3 +199,85 @@ def test_every_table_defines_audit_columns_and_key():
         assert ("audit_updated_process" in names) is (not t.append_only)
     stmts = ddl.create_statements(_cfg())
     assert any("'delta.appendOnly' = 'true'" in s and "classification_review_event" in s for s in stmts)
+
+
+# ---------------------------------------------------------------- differential maintenance
+
+
+def _desired_state():
+    """An ExistingState that already matches everything ddl wants."""
+    cfg = _cfg()
+    state = ddl.ExistingState()
+    for t in ddl.TABLES:
+        state.table_comments[t.name] = t.comment
+        state.properties[t.name] = {"delta.appendOnly": "true"} if t.append_only else {}
+        state.key_constraints.add(f"pk_{t.name}")
+        for col in t.columns:
+            state.column_comments[(t.name, col.name)] = col.comment
+    for _, name, _, _, _ in ddl.FOREIGN_KEYS:
+        state.key_constraints.add(name)
+    for table, name, expr in ddl.check_constraints(cfg):
+        state.properties[table][f"delta.constraints.{name.lower()}"] = expr
+    return state
+
+
+def test_maintenance_with_no_state_issues_everything():
+    stmts = ddl.maintenance_statements(_cfg())
+    checks = ddl.check_constraints(_cfg())
+    assert sum("ADD CONSTRAINT" in s and "CHECK" in s for s in stmts) == len(checks)
+    assert sum("DROP CONSTRAINT IF EXISTS" in s for s in stmts) == len(checks)
+    assert sum("PRIMARY KEY" in s for s in stmts) == len(ddl.TABLES)
+    assert sum("FOREIGN KEY" in s for s in stmts) == len(ddl.FOREIGN_KEYS)
+    assert any(s.startswith("COMMENT ON TABLE") for s in stmts)
+
+
+def test_maintenance_is_a_no_op_when_state_matches():
+    stmts = ddl.maintenance_statements(_cfg(), _desired_state())
+    assert len(stmts) == 1 and "FUNCTION" in stmts[0]  # make_key is always refreshed
+
+
+def test_maintenance_replaces_changed_check_and_adds_missing_check_without_drop():
+    state = _desired_state()
+    state.properties["classification_review_batch"]["delta.constraints.valid_batch_status"] = "status IN ('OPEN')"
+    del state.properties["classification_review_item"]["delta.constraints.valid_issue_type"]
+    stmts = ddl.maintenance_statements(_cfg(), state)
+    batch = [s for s in stmts if "valid_batch_status" in s]
+    item = [s for s in stmts if "valid_issue_type" in s]
+    assert len(batch) == 2 and "DROP CONSTRAINT IF EXISTS" in batch[0] and "ADD CONSTRAINT" in batch[1]
+    assert len(item) == 1 and "ADD CONSTRAINT" in item[0]
+
+
+def test_maintenance_adds_only_missing_keys_and_changed_comments():
+    state = _desired_state()
+    state.key_constraints.discard("fk_item_batch")
+    state.column_comments[("classification_review_item", "status")] = "old"
+    state.table_comments["classification_attestation"] = None
+    stmts = ddl.maintenance_statements(_cfg(), state)
+    assert [s for s in stmts if "FOREIGN KEY" in s] == [s for s in stmts if "fk_item_batch" in s]
+    assert any("ALTER COLUMN status COMMENT" in s and "classification_review_item" in s for s in stmts)
+    assert any(s.startswith("COMMENT ON TABLE") and "classification_attestation" in s for s in stmts)
+    assert len(stmts) == 4
+
+
+# ---------------------------------------------------------------- job argument guard
+
+
+def _argv(env="dev", process="dev_phi_classification_scan"):
+    return ["--env", env, "--catalog", "cat", "--governance_schema", "gov", "--tag_key", "phi",
+            "--process_name", process, "--run_id", "42", "--allowed_catalogs", "cat, other"]
+
+
+def test_parse_accepts_framework_jobs_for_its_environment():
+    from phi_framework import config
+
+    cfg, _ = config.parse("doc", _argv())
+    assert cfg.process_name == "dev_phi_classification_scan" and cfg.allowed_catalogs == ("cat", "other")
+    assert config.parse("doc", _argv(process="dev_phi_framework_setup"))[0].run_id == "42"
+
+
+@pytest.mark.parametrize("env,process", [("dev", "dev_phi_bogus"), ("dev", "prod_phi_classification_scan")])
+def test_parse_rejects_unknown_or_cross_environment_process(env, process):
+    from phi_framework import config
+
+    with pytest.raises(ValueError):
+        config.parse("doc", _argv(env, process))

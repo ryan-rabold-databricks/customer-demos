@@ -17,6 +17,8 @@ from phi_framework.keys import make_key
 
 from .settings import Settings
 
+_ALLOWED_TTL_SECONDS = 300
+
 _ITEM_SELECT = """
 SELECT i.*, b.scope_id, b.due_at, b.status AS batch_status, r.steward_group, r.risk_tier
 FROM {item} i
@@ -30,6 +32,7 @@ class Backend:
         self.s = settings
         self.cfg = Config()
         self._allowed: Optional[tuple] = None
+        self._allowed_at = 0.0
 
     @contextmanager
     def _cursor(self):
@@ -98,11 +101,18 @@ class Backend:
         )
 
     def allowed_values(self) -> tuple:
-        """Allowed values from the governed tag policy, cached for the life of the process."""
-        if self._allowed is None:
-            resp = WorkspaceClient().api_client.do("GET", f"/api/2.1/tag-policies/{self.s.tag_key}")
-            self._allowed = tuple(v["name"] for v in resp.get("values", []))
-        return self._allowed
+        """Allowed values from the governed tag policy, cached briefly so policy edits take effect.
+
+        An empty policy is never cached, so values defined after startup are picked up on the next call.
+        """
+        now = time.monotonic()
+        if self._allowed is not None and now - self._allowed_at < _ALLOWED_TTL_SECONDS:
+            return self._allowed
+        resp = WorkspaceClient().api_client.do("GET", f"/api/2.1/tag-policies/{self.s.tag_key}")
+        values = tuple(v["name"] for v in resp.get("values", []))
+        if values:
+            self._allowed, self._allowed_at = values, now
+        return values
 
     # ------------------------------------------------------------ writes
 
