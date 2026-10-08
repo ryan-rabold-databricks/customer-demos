@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ item.column_name }} · PHI Review{% endblock %}
+{% block content %}
+<p><a href="/">← Back to queue</a></p>
+<h1>{{ item.catalog_name }}.{{ item.schema_name }}.{{ item.table_name }}.<b>{{ item.column_name }}</b></h1>
+<dl class="grid">
+  <dt>Status</dt><dd>{{ item.status }}</dd>
+  <dt>Issue</dt><dd>{{ item.issue_type }}</dd>
+  <dt>Object type</dt><dd>{{ item.table_type }}</dd>
+  <dt>Data type</dt><dd>{{ item.full_data_type }}</dd>
+  <dt>Description</dt><dd>{{ item.column_comment or "—" }}</dd>
+  <dt>Current tag</dt><dd>{{ item.current_tag_value or "none" }}</dd>
+  <dt>Suggested value</dt><dd>{{ item.suggested_tag_value or "none" }}{% if item.suggestion_reason %} <span class="muted">({{ item.suggestion_reason }})</span>{% endif %}</dd>
+  <dt>Scope</dt><dd>{{ item.scope_id }} · {{ item.risk_tier }} · stewards: {{ item.steward_group }}</dd>
+  <dt>Assigned steward</dt><dd>{{ item.assigned_steward or "unassigned" }}</dd>
+  <dt>Due</dt><dd>{{ item.due_at }}</dd>
+  {% if item.decision %}<dt>Recorded decision</dt><dd>{{ item.decision }} by {{ item.reviewed_by }} at {{ item.reviewed_at }}</dd>{% endif %}
+  {% if item.application_error %}<dt>Application error</dt><dd class="err">{{ item.application_error }}</dd>{% endif %}
+</dl>
+
+{% if pending %}<p class="flash ok">A submission for this item is waiting for ingestion.</p>{% endif %}
+
+{% if can_decide %}
+<h2>Decision</h2>
+<p class="muted">You are deciding as <b>{{ role }}</b>. Your identity and the submission time are recorded automatically.</p>
+<form method="post" action="/items/{{ item.review_item_id }}/decision" class="decision">
+  <fieldset>
+    {% for d in decisions %}
+      {% if not (d == "REQUEST_PRIVACY_REVIEW" and item.status == "NEEDS_PRIVACY_REVIEW") %}
+      <label><input type="radio" name="decision" value="{{ d }}" required
+        {% if d == "APPROVE_SUGGESTION" and not item.suggested_tag_value %}disabled{% endif %}> {{ d.replace("_", " ").title() }}</label>
+      {% endif %}
+    {% endfor %}
+  </fieldset>
+  <label>Corrected value (for Correct Classification)
+    <select name="corrected_tag_value">
+      <option value="">—</option>
+      {% for v in allowed %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Comment (required to confirm not PHI or request Privacy review)
+    <textarea name="steward_comment" rows="3" maxlength="2000"></textarea>
+  </label>
+  <button type="submit">Submit decision</button>
+</form>
+{% elif role is none %}
+<p class="muted">You are not the assigned steward, a member of this scope's steward group, or in Data Governance.</p>
+{% endif %}
+
+<h2>Audit trail</h2>
+<table>
+  <thead><tr><th>When (UTC)</th><th>Event</th><th>Actor</th><th>Details</th></tr></thead>
+  <tbody>
+  {% for e in events %}
+    <tr><td>{{ e.event_timestamp }}</td><td>{{ e.event_type }}</td><td>{{ e.business_actor or "" }}</td><td class="mono">{{ e.details or "" }}</td></tr>
+  {% else %}<tr><td colspan="4" class="muted">No events.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

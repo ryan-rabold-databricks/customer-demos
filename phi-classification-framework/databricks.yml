@@ -1,0 +1,81 @@
+bundle:
+  name: phi-classification-framework
+
+include:
+  - resources/*.yml
+
+# Every environment-specific value is a variable so the same definitions deploy to dev, test, and prod.
+variables:
+  env:
+    description: Deployment environment (dev, test, prod). Prefixes job names and audit process names.
+    default: dev
+  catalog:
+    description: Catalog that holds the governance schema.
+  governance_schema:
+    description: Schema for the governance tables.
+    default: data_governance
+  allowed_catalogs:
+    description: Comma-separated catalogs this environment may scan and tag (environment guardrail).
+  tag_key:
+    description: Governed tag key whose allowed values are the PHI taxonomy.
+    default: phi_data_classification
+  warehouse_id:
+    description: SQL warehouse the review app queries.
+  governance_group:
+    description: Account group whose members act as Data Governance in the review app.
+  governance_owner:
+    description: Governance owner recorded on seeded demo scope rows.
+    default: ""
+  seed_demo:
+    description: When "true", setup creates synthetic demo schemas and registers them as scopes.
+    default: "false"
+  clinical_steward_group:
+    description: Steward group for the synthetic clinical scope (seed_demo only).
+    default: ""
+  billing_steward_group:
+    description: Steward group for the synthetic billing scope (seed_demo only).
+    default: ""
+  trigger_pause_status:
+    description: PAUSED or UNPAUSED for the ingestion and application table-update triggers.
+    default: UNPAUSED
+  scan_schedule_pause_status:
+    description: PAUSED or UNPAUSED for the weekly scan schedule.
+    default: PAUSED
+  class_tag_mapping:
+    description: JSON map of Data Classification class_tag to an allowed tag value, approved by Data Governance.
+    default: >-
+      {"class.name": "name", "class.location": "address", "class.date_of_birth": "date",
+      "class.phone_number": "phone_number", "class.email_address": "email_address", "class.us_ssn": "ssn",
+      "class.us_bank_number": "account_number", "class.us_driver_license": "cert_license_number",
+      "class.license_plate": "vehicle_identifier", "class.vin": "vehicle_identifier",
+      "class.mac_address": "device_identifier", "class.imei": "device_identifier", "class.url": "web_url",
+      "class.ip_address": "ip_address", "class.biometric_data": "biometric_identifier"}
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      # Set to your own Databricks CLI profile (see `databricks auth profiles`).
+      profile: fevm-classic
+    variables:
+      env: dev
+      catalog: rtr_demo_catalog
+      allowed_catalogs: rtr_demo_catalog
+      warehouse_id: 5a3e1a5cfdf513f1
+      governance_group: data-governance-team
+      governance_owner: data-governance-team
+      seed_demo: "true"
+      clinical_steward_group: clinical_data_access
+      billing_steward_group: analytics-team
+
+  prod:
+    mode: production
+    workspace:
+      profile: fevm-classic
+    # Production runs as a dedicated service principal and is deployed only from CI:
+    # run_as:
+    #   service_principal_name: <framework service principal application ID>
+    variables:
+      env: prod
+      scan_schedule_pause_status: UNPAUSED

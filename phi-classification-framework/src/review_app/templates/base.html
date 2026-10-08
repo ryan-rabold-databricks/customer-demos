@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PHI Classification Review{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">PHI Classification Review</a>
+    <nav>
+      <a href="/">My queue</a>
+      {% if is_governance %}<a href="/governance">Data Governance</a>{% endif %}
+    </nav>
+    <span class="who">{{ user.email }} · {{ env }}</span>
+  </header>
+  <main>
+    {% if message %}<p class="flash ok">{{ message }}</p>{% endif %}
+    {% if error %}<p class="flash err">{{ error }}</p>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

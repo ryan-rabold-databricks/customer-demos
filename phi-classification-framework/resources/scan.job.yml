@@ -1,0 +1,55 @@
+resources:
+  jobs:
+    phi_scan:
+      name: ${var.env}_phi_classification_scan
+      description: Weekly scan for columns needing PHI classification review. Run on demand with correction_* parameters to open a correction.
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 0 7 ? * MON"
+        timezone_id: America/New_York
+        pause_status: ${var.scan_schedule_pause_status}
+      parameters:
+        - name: correction_column
+          default: ""
+        - name: correction_reason
+          default: ""
+        - name: correction_requested_by
+          default: ""
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - databricks-sdk>=0.40.0
+      tasks:
+        - task_key: scan
+          environment_key: default
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          spark_python_task:
+            python_file: ../src/jobs/scan.py
+            parameters:
+              - --src_root
+              - ${workspace.file_path}/src
+              - --env
+              - ${var.env}
+              - --catalog
+              - ${var.catalog}
+              - --governance_schema
+              - ${var.governance_schema}
+              - --tag_key
+              - ${var.tag_key}
+              - --process_name
+              - ${var.env}_phi_classification_scan
+              - --run_id
+              - "{{job.run_id}}"
+              - --allowed_catalogs
+              - ${var.allowed_catalogs}
+              - --class_tag_mapping
+              - ${var.class_tag_mapping}
+              - --correction_column
+              - "{{job.parameters.correction_column}}"
+              - --correction_reason
+              - "{{job.parameters.correction_reason}}"
+              - --correction_requested_by
+              - "{{job.parameters.correction_requested_by}}"

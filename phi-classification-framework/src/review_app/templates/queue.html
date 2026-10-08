@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>My review queue</h1>
+<p class="muted">Columns that need a PHI classification decision. A missing tag never means "not PHI".</p>
+<h2>Assigned to me</h2>
+{% with rows = mine %}{% include "_items_table.html" %}{% endwith %}
+<h2>My steward groups</h2>
+<p class="muted">Items in scopes whose steward group you belong to, assigned to another steward or not yet assigned.</p>
+{% with rows = group %}{% include "_items_table.html" %}{% endwith %}
+{% endblock %}

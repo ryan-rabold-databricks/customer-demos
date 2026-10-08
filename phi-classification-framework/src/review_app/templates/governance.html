@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Data Governance</h1>
+<p class="counts">{% for k, v in counts|dictsort %}<span class="pill">{{ k }}: {{ v }}</span>{% endfor %}</p>
+
+<h2>Triage open items</h2>
+<table>
+  <thead><tr><th>Column</th><th>Issue</th><th>Status</th><th>Steward group</th><th>Assigned steward</th></tr></thead>
+  <tbody>
+  {% for i in items %}
+    <tr>
+      <td><a href="/items/{{ i.review_item_id }}">{{ i.schema_name }}.{{ i.table_name }}.<b>{{ i.column_name }}</b></a></td>
+      <td>{{ i.issue_type }}</td>
+      <td>{{ i.status }}{% if i.review_item_id in pending %} <span class="pill">submitted</span>{% endif %}</td>
+      <td>{{ i.steward_group }}</td>
+      <td>
+        <form method="post" action="/items/{{ i.review_item_id }}/assign" class="inline">
+          <input name="assigned_steward" type="email" placeholder="steward@example.org" value="{{ i.assigned_steward or '' }}" required>
+          <button type="submit">Assign</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}<tr><td colspan="5" class="muted">No open items.</td></tr>{% endfor %}
+  </tbody>
+</table>
+
+<h2>Request a correction</h2>
+<p class="muted">Reopens a resolved column for a new decision. The scan opens a CORRECTION_REQUESTED item for normal steward review; resolved items stay unchanged as evidence.</p>
+<form method="post" action="/corrections" class="inline">
+  <input name="column_fqn" placeholder="catalog.schema.table.column" required size="50">
+  <input name="reason" placeholder="Reason" required size="40">
+  <button type="submit">Request correction</button>
+</form>
+
+<h2>Batches</h2>
+<table>
+  <thead><tr><th>Batch</th><th>Scope</th><th>Status</th><th>Resolved</th><th>Created</th><th>Due</th><th>Last error</th></tr></thead>
+  <tbody>
+  {% for b in batches %}
+    <tr><td class="mono">{{ b.review_batch_id }}</td><td>{{ b.scope_id }}</td><td>{{ b.status }}</td>
+        <td>{{ b.resolved }}/{{ b.items }}</td><td>{{ b.created_at }}</td><td>{{ b.due_at }}</td><td class="err">{{ b.last_error or "" }}</td></tr>
+  {% else %}<tr><td colspan="7" class="muted">No batches yet.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

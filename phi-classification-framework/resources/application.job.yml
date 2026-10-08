@@ -1,0 +1,42 @@
+resources:
+  jobs:
+    phi_application:
+      name: ${var.env}_phi_classification_application
+      description: Applies and verifies validated tag actions. Triggered by new application plan rows.
+      max_concurrent_runs: 1
+      trigger:
+        pause_status: ${var.trigger_pause_status}
+        table_update:
+          table_names:
+            - ${var.catalog}.${var.governance_schema}.classification_application_plan
+          wait_after_last_change_seconds: 60
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - databricks-sdk>=0.40.0
+      tasks:
+        - task_key: apply
+          environment_key: default
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          spark_python_task:
+            python_file: ../src/jobs/apply.py
+            parameters:
+              - --src_root
+              - ${workspace.file_path}/src
+              - --env
+              - ${var.env}
+              - --catalog
+              - ${var.catalog}
+              - --governance_schema
+              - ${var.governance_schema}
+              - --tag_key
+              - ${var.tag_key}
+              - --process_name
+              - ${var.env}_phi_classification_application
+              - --run_id
+              - "{{job.run_id}}"
+              - --allowed_catalogs
+              - ${var.allowed_catalogs}

@@ -1,0 +1,44 @@
+resources:
+  jobs:
+    phi_setup:
+      name: ${var.env}_phi_framework_setup
+      description: Idempotent DDL, keys, constraints, comments, and grants for the PHI governance tables. Run on every deployment.
+      max_concurrent_runs: 1
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - databricks-sdk>=0.40.0
+      tasks:
+        - task_key: setup
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/jobs/setup.py
+            parameters:
+              - --src_root
+              - ${workspace.file_path}/src
+              - --env
+              - ${var.env}
+              - --catalog
+              - ${var.catalog}
+              - --governance_schema
+              - ${var.governance_schema}
+              - --tag_key
+              - ${var.tag_key}
+              - --process_name
+              - ${var.env}_phi_framework_setup
+              - --run_id
+              - "{{job.run_id}}"
+              - --allowed_catalogs
+              - ${var.allowed_catalogs}
+              - --app_sp_client_id
+              - ${resources.apps.phi_review_app.service_principal_client_id}
+              - --seed_demo
+              - ${var.seed_demo}
+              - --clinical_steward_group
+              - ${var.clinical_steward_group}
+              - --billing_steward_group
+              - ${var.billing_steward_group}
+              - --governance_owner
+              - ${var.governance_owner}
